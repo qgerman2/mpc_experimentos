@@ -11,19 +11,21 @@ r_FC = 4.7E-8;
 V_FC = 100;
 N = 10;
 
+escalado = 1000;
+
 %% sistema espacio estado discreto
 % estado x      estado u
 % SOC           P_FC
 % H2
 % P_M
 
-A = [1, 0, -n_BAT/C_E*Ts; 
+A = [1, 0, -n_BAT/C_E*Ts*escalado; 
     0, 1, 0;
     0, 0, 1;
 ];
 B = [
-    n_BAT*Ts/C_E; 
-    -r_FC*Ts/V_FC;
+    n_BAT*Ts/C_E*escalado; 
+    -r_FC*Ts/V_FC*escalado;
     0;
 ];
 
@@ -59,7 +61,7 @@ Q = kron(eye(N), q);
 R = kron(eye(N), r);
 
 %% referencia
-r = [0.9;0.9;0];
+r = [0.9;0.9;0]*escalado;
 T = repmat(r, N, 1);
 
 %% constraints
@@ -82,14 +84,14 @@ x_select = [
     1,0,0;
     0,1,0
 ];
-x_max = [1;1];
+x_max = [1;1]*escalado;
 x_min = [0;0];
 Gamma = kron(eye(N), [x_select;-x_select]);
 g = repmat([x_max;x_min], N, 1);
 
 %% simular
 % condicion inicial
-x(:,1) = [0.5, 0.5, 100];
+x(:,1) = [0.5*escalado, 0.5*escalado, 100];
 u = zeros(m, 1);
 du = zeros(m, 1);
 
@@ -97,33 +99,33 @@ du = zeros(m, 1);
 H = Theta'*Q*Theta+R;
 H = (H+H')/2;
 
-for k = 1:20
-    % optimizacion online
-    if (k > 1)
-        epsilon = T - Psi*x(:,k) - Upsilon*u(:,k-1);
-    else
-        epsilon = T - Psi*x(:,k);
-    end
-    G = 2*Theta'*Q*epsilon;
-    
-    % constraints
-    A_u = F;
-    A_x = Gamma*Theta;
-    if (k > 1)
-        b_u = -F(:,1) * u(:,k-1) + f;
-        b_x = -Gamma * (Psi*x(:,k) + Upsilon*u(:,k-1)) + g;
-    else
-        b_u = f;
-        b_x = -Gamma * Psi*x(:,k) + g;
-    end
+% optimizacion online
+if (k > 1)
+    epsilon = T - Psi*x(:,k) - Upsilon*u(:,k-1);
+else
+    epsilon = T - Psi*x(:,k);
+end
+G = 2*Theta'*Q*epsilon;
 
-    % entrada mpc
-    [opt, ~, exitflag] = quadprog(2*H, -G, [A_du; A_u; A_x],[b_du; b_u; b_x],[],[],[],[],[],options);
-    if exitflag < 1
-        disp("infeasible")
-        break
-    end
-    du(:,k) = opt(1:m);
+% constraints
+A_u = F;
+A_x = Gamma*Theta;
+if (k > 1)
+    b_u = -F(:,1) * u(:,k-1) + f;
+    b_x = -Gamma * (Psi*x(:,k) + Upsilon*u(:,k-1)) + g;
+else
+    b_u = f;
+    b_x = -Gamma * Psi*x(:,k) + g;
+end
+
+% entrada mpc
+[opt, ~, exitflag] = quadprog(2*H, -G, [],[],[],[],[],[],[],options);
+if exitflag < 1
+    disp("infeasible")
+end
+
+for k = 1:10
+    du(:,k) = opt(k);
     if (k > 1)
         u(:,k) = u(:,k-1) + du(:,k);
     else
