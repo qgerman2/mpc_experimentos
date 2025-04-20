@@ -9,24 +9,25 @@ Ts = 60; % s
 C_E = 27000; % kJ
 r_FC = 4.7E-8;
 V_FC = 100;
-N = 2;
-
-escalado = 1000;
+N = 20;
 
 %% sistema espacio estado discreto
 % estado x      estado u
 % SOC           P_FC
 % H2
 % P_M
+% P_FC - P_M
 
-A = [1, 0, -n_BAT/C_E*Ts*escalado; 
-    0, 1, 0;
-    0, 0, 1;
+A = [1, 0, -n_BAT/C_E*Ts, 0; 
+    0, 1, 0, 0;
+    0, 0, 1, 0;
+    0, 0, -1, 0;
 ];
 B = [
-    n_BAT*Ts/C_E*escalado; 
-    -r_FC*Ts/V_FC*escalado;
+    n_BAT*Ts/C_E; 
+    -r_FC*Ts/V_FC;
     0;
+    1;
 ];
 
 n = size(A,1);
@@ -55,13 +56,13 @@ for i = 1:N
 end
 
 %% costos
-q = diag([10, 1, 0]);
+q = diag([10, 1, 0, 0.001]);
 r = 0;
 Q = kron(eye(N), q);
 R = kron(eye(N), r);
 
 %% referencia
-r = [0.9;0.9;0]*escalado;
+r = [0.9;0.9;0;0];
 T = repmat(r, N, 1);
 
 %% constraints
@@ -81,17 +82,17 @@ b_du = repmat([du_max; du_min], N, 1);
 
 % state
 x_select = [
-    1,0,0;
-    0,1,0
+    1,0,0,0;
+    0,1,0,0
 ];
-x_max = [1;1]*escalado;
+x_max = [1;1];
 x_min = [0;0];
 Gamma = kron(eye(N), [x_select;-x_select]);
 g = repmat([x_max;x_min], N, 1);
 
 %% simular
 % condicion inicial
-x(:,1) = [0.5*escalado, 0.5*escalado, 100];
+x(:,1) = [0.5, 0.5, 100, 0];
 u = zeros(m, 1);
 du = zeros(m, 1);
 
@@ -99,35 +100,33 @@ du = zeros(m, 1);
 H = Theta'*Q*Theta+R;
 H = (H+H')/2;
 
-% optimizacion online
-if (k > 1)
-    epsilon = T - Psi*x(:,k) - Upsilon*u(:,k-1);
-else
-    epsilon = T - Psi*x(:,k);
-end
-G = 2*Theta'*Q*epsilon;
+for k = 1:20
+    % optimizacion online
+    if (k > 1)
+        epsilon = T - Psi*x(:,k) - Upsilon*u(:,k-1);
+    else
+        epsilon = T - Psi*x(:,k);
+    end
+    G = 2*Theta'*Q*epsilon;
+    
+    % constraints
+    A_u = F;
+    A_x = Gamma*Theta;
+    if (k > 1)
+        b_u = -F(:,1) * u(:,k-1) + f;
+        b_x = -Gamma * (Psi*x(:,k) + Upsilon*u(:,k-1)) + g;
+    else
+        b_u = f;
+        b_x = -Gamma * Psi*x(:,k) + g;
+    end
 
-% constraints
-A_u = F;
-A_x = Gamma*Theta;
-if (k > 1)
-    b_u = -F(:,1) * u(:,k-1) + f;
-    b_x = -Gamma * (Psi*x(:,k) + Upsilon*u(:,k-1)) + g;
-else
-    b_u = f;
-    b_x = -Gamma * Psi*x(:,k) + g;
-end
-
-% entrada mpc
-%[opt, ~, exitflag] = quadprog(2*H, -G, [A_du; A_u; A_x],[b_du; b_u; b_x],[],[],[],[],[],options);
-[opt, ~, exitflag] = quadprog(2*H, -G, [],[],[],[],[],[],[],options);
-
-if exitflag < 1
-    disp("infeasible")
-end
-
-for k = 1:2
-    du(:,k) = opt(k);
+    % entrada mpc
+    [opt, ~, exitflag] = quadprog(2*H, -G, [A_du; A_u; A_x],[b_du; b_u; b_x],[],[],[],[],[],options);
+    if exitflag < 1
+        disp("infeasible")
+        break
+    end
+    du(:,k) = opt(1:m);
     if (k > 1)
         u(:,k) = u(:,k-1) + du(:,k);
     else
@@ -147,3 +146,5 @@ ylabel("u")
 figure(3);
 plot(du)
 ylabel("du")
+figure(4);
+plot(x(3:4,:)');
