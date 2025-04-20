@@ -9,7 +9,7 @@ Ts = 60; % s
 C_E = 27000; % kJ
 r_FC = 4.7E-8;
 V_FC = 100;
-N = 10;
+N = 20;
 
 escalado = 1000;
 
@@ -119,12 +119,12 @@ else
 end
 
 % entrada mpc
-[opt, ~, exitflag] = quadprog(2*H, -G, [],[],[],[],[],[],[],options);
+[opt, ~, exitflag] = quadprog(2*H, -G, [A_du; A_u; A_x],[b_du; b_u; b_x],[],[],[],[],[],options);
 if exitflag < 1
     disp("infeasible")
 end
 
-for k = 1:10
+for k = 1:20
     du(:,k) = opt(k);
     if (k > 1)
         u(:,k) = u(:,k-1) + du(:,k);

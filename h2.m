@@ -9,7 +9,7 @@ Ts = 60; % s
 C_E = 27000; % kJ
 r_FC = 4.7E-8;
 V_FC = 100;
-N = 10;
+N = 20;
 
 %% sistema espacio estado discreto
 % estado x      estado u
